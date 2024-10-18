@@ -1,0 +1,20 @@
+
+
+remote_transmitter:
+  pin: GPIO32
+  carrier_duty_percent: 50%
+
+remote_receiver:
+  id: rcvr
+  pin: 
+    number: GPIO33
+    inverted: True
+    mode: 
+      pullup: True
+      input: True
+  idle: 25ms
+  dump: raw
+
+climate:
+  - platform: fisher
+    receiver_id: rcvr
