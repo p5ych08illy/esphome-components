@@ -166,28 +166,28 @@ void FisherClimate::transmit_state() {
 
   data->mark(FISHER_HEADER_MARK);
   data->space(FISHER_HEADER_SPACE);
-
-  //if (this->mode != climate::CLIMATE_MODE_OFF) {
-  this->reverse_add_(this->set_mode_(), 3, data);
-  this->add_(1, data);
+  this->add_(0, 24, data);      // zeros
+  this->add_(1, 1, data);      
+  this->add_(0, 32, data);      // zeros
+  
+  this->add_((this->mode != climate::CLIMATE_MODE_OFF) ? 0 : 1, data); // ON / OFF
+  
+  this->add_(0, 3, data);      // zeros
+  
   this->reverse_add_(this->set_fan_speed_(), 2, data);
-  this->add_(this->swing_mode != climate::CLIMATE_SWING_OFF, data);
-  this->add_(0, data);  // sleep mode
-  this->reverse_add_(this->set_temp_(), 4, data);
-  this->add_(0, 8, data);      // zeros
-  this->add_(0, data);         // turbo mode
-  this->add_(1, data);         // light
-  this->add_(1, data);         // tree icon thingy
-  this->add_(0, data);         // blow mode
-  this->add_(0x52, 11, data);  // idk
+  
+  this->add_(0, 9, data);      // zeros
 
-  this->reverse_add_(this->set_blades_(), 4, data);
-  this->add_(0, 4, data);          // zeros
-  this->reverse_add_(2, 2, data);  // thermometer
-  this->add_(0, 18, data);         // zeros
+  this->reverse_add_(this->set_temp_(), 5, data);
+
+  this->reverse_add_(this->set_mode_(), 3, data);
+
+  this->add_(0xA5, 8, data);   // idk
+  this->add_(0, 4, data);      // zeros
+
+  //this->reverse_add_(this->set_blades_(), 4, data);
   this->reverse_add_(this->gen_checksum_(), 4, data);
 
-  
   data->mark(FISHER_ZERO_SPACE);
   data->space(FISHER_HEADER_SPACE);
   data->mark(FISHER_ZERO_SPACE);
