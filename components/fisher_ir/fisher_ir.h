@@ -3,7 +3,7 @@
 #include "esphome/components/climate_ir/climate_ir.h"
 
 namespace esphome {
-namespace fisher {
+namespace fisher_ir {
 
 const uint8_t FISHER_TEMP_MIN = 16;  // Celsius
 const uint8_t FISHER_TEMP_MAX = 30;  // Celsius
@@ -104,5 +104,5 @@ class FisherClimate : public climate_ir::ClimateIR {
   uint8_t blades_ = FISHER_BLADES_STOP;
 };
 
-}  // namespace fisher
+}  // namespace fisher_ir
 }  // namespace esphome

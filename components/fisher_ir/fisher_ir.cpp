@@ -1,10 +1,10 @@
-#include "fisher.h"
+#include "fisher_ir.h"
 #include "esphome/components/remote_base/remote_base.h"
 
 namespace esphome {
-namespace fisher {
+namespace fisher_ir {
 
-static const char *const TAG = "fisher.climate";
+static const char *const TAG = "fisher_ir.climate";
 
 // setters
 uint8_t FisherClimate::set_temp_() {
@@ -301,5 +301,5 @@ bool FisherClimate::on_receive(remote_base::RemoteReceiveData data) {
   return this->parse_state_frame_(curr_state);
 }
 
-}  // namespace fisher
+}  // namespace fisher_ir
 }  // namespace esphome

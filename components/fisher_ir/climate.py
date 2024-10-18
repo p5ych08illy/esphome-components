@@ -6,7 +6,7 @@ from esphome.const import CONF_ID
 CODEOWNERS = ["@p5ych08illy"]
 AUTO_LOAD = ["climate_ir"]
 
-fisher_ns = cg.esphome_ns.namespace("fisher")
+fisher_ns = cg.esphome_ns.namespace("fisher_ir")
 FisherClimate = fisher_ns.class_("FisherClimate", climate_ir.ClimateIR)
 
 CONFIG_SCHEMA = climate_ir.CLIMATE_IR_WITH_RECEIVER_SCHEMA.extend(
