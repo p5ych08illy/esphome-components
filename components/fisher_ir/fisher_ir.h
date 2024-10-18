@@ -6,7 +6,7 @@ namespace esphome {
 namespace fisher_ir {
 
 const uint8_t FISHER_TEMP_MIN = 16;  // Celsius
-const uint8_t FISHER_TEMP_MAX = 30;  // Celsius
+const uint8_t FISHER_TEMP_MAX = 32;  // Celsius
 
 // Modes
 
@@ -43,6 +43,7 @@ enum FisherBlades : uint8_t {
 };
 
 // IR Transmission
+const uint32_t FISHER_STATE_FRAME_SIZE = 128; //?
 const uint32_t FISHER_IR_FREQUENCY = 38000;
 const uint32_t FISHER_HEADER_MARK = 6050;
 const uint32_t FISHER_HEADER_SPACE = 7450;
@@ -65,8 +66,7 @@ class FisherClimate : public climate_ir::ClimateIR {
   FisherClimate()
       : climate_ir::ClimateIR(FISHER_TEMP_MIN, FISHER_TEMP_MAX, 1.0f, true, true,
                               {climate::CLIMATE_FAN_AUTO, climate::CLIMATE_FAN_LOW, climate::CLIMATE_FAN_MEDIUM,
-                               climate::CLIMATE_FAN_HIGH},
-                              {climate::CLIMATE_SWING_OFF, climate::CLIMATE_SWING_VERTICAL}) {}
+                               climate::CLIMATE_FAN_HIGH}, {}) {}
 
  protected:
   // Transmit via IR the state of this climate controller
@@ -74,6 +74,7 @@ class FisherClimate : public climate_ir::ClimateIR {
   // Handle received IR Buffer
   bool on_receive(remote_base::RemoteReceiveData data) override;
   bool parse_state_frame_(FisherState curr_state);
+  bool parse_state_frame_(const uint8_t frame[]);
 
   // setters
   uint8_t set_mode_();

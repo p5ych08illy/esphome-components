@@ -200,7 +200,6 @@ bool FisherClimate::parse_state_frame_(FisherState curr_state) {
   this->fan_mode = this->get_fan_speed_(curr_state.fan_speed);
   this->target_temperature = this->get_temp_(curr_state.temp);
   this->swing_mode = this->get_swing_(curr_state.bitmap);
-  // this->blades_ = curr_state.fan_pos;
   if (!(curr_state.bitmap & 0x01)) {
     this->mode = climate::CLIMATE_MODE_OFF;
   }
@@ -209,96 +208,53 @@ bool FisherClimate::parse_state_frame_(FisherState curr_state) {
   return true;
 }
 
+bool FisherClimate::parse_state_frame_(const uint8_t frame[]) {
+  FisherState curr_state;
+
+
+
+  return this->parse_state_frame_(curr_state);
+}
+
+
 bool FisherClimate::on_receive(remote_base::RemoteReceiveData data) {
+  uint8_t state_frame[FISHER_STATE_FRAME_SIZE] = {};
   if (!data.expect_item(FISHER_HEADER_MARK, FISHER_HEADER_SPACE)) {
     return false;
   }
-  ESP_LOGD(TAG, "Received fisher frame");
-
-  FisherState curr_state;
-
-  for (size_t pos = 0; pos < 3; pos++) {
-    if (data.expect_item(FISHER_BIT_MARK, FISHER_ONE_SPACE)) {
-      curr_state.mode |= 1 << pos;
-    } else if (!data.expect_item(FISHER_BIT_MARK, FISHER_ZERO_SPACE)) {
-      return false;
+  for (uint8_t pos = 0; pos < FISHER_STATE_FRAME_SIZE; pos++) {
+    uint8_t byte = 0;
+    for (int8_t bit = 0; bit < 8; bit++) {
+      if (data.expect_item(FISHER_BIT_MARK, FISHER_ONE_SPACE)) {
+        byte |= 1 << bit;
+      } else if (!data.expect_item(FISHER_BIT_MARK, FISHER_ZERO_SPACE)) {
+        return false;
+      }
+    }
+    state_frame[pos] = byte;
+    if (pos == 0) {
+      // frame header
+      if (byte != 0x11)
+        return false;
+    } else if (pos == 1) {
+      // frame header
+      if (byte != 0xDA)
+        return false;
+    } else if (pos == 2) {
+      // frame header
+      if (byte != 0x17)
+        return false;
+    } else if (pos == 3) {
+      // frame header
+      if (byte != 0x18)
+        return false;
+    } else if (pos == 4) {
+      // frame type
+      if (byte != 0x00)
+        return false;
     }
   }
-
-  ESP_LOGD(TAG, "Mode: %d", curr_state.mode);
-
-  if (data.expect_item(FISHER_BIT_MARK, FISHER_ONE_SPACE)) {
-    curr_state.bitmap |= 1 << 0;
-  } else if (!data.expect_item(FISHER_BIT_MARK, FISHER_ZERO_SPACE)) {
-    return false;
-  }
-
-  ESP_LOGD(TAG, "On: %d", curr_state.bitmap & 0x01);
-
-  for (size_t pos = 0; pos < 2; pos++) {
-    if (data.expect_item(FISHER_BIT_MARK, FISHER_ONE_SPACE)) {
-      curr_state.fan_speed |= 1 << pos;
-    } else if (!data.expect_item(FISHER_BIT_MARK, FISHER_ZERO_SPACE)) {
-      return false;
-    }
-  }
-
-  ESP_LOGD(TAG, "Fan speed: %d", curr_state.fan_speed);
-
-  for (size_t pos = 0; pos < 2; pos++) {
-    if (data.expect_item(FISHER_BIT_MARK, FISHER_ONE_SPACE)) {
-      curr_state.bitmap |= 1 << (pos + 1);
-    } else if (!data.expect_item(FISHER_BIT_MARK, FISHER_ZERO_SPACE)) {
-      return false;
-    }
-  }
-
-  ESP_LOGD(TAG, "Swing: %d", (curr_state.bitmap >> 1) & 0x01);
-  ESP_LOGD(TAG, "Sleep: %d", (curr_state.bitmap >> 2) & 0x01);
-
-  for (size_t pos = 0; pos < 4; pos++) {
-    if (data.expect_item(FISHER_BIT_MARK, FISHER_ONE_SPACE)) {
-      curr_state.temp |= 1 << pos;
-    } else if (!data.expect_item(FISHER_BIT_MARK, FISHER_ZERO_SPACE)) {
-      return false;
-    }
-  }
-
-  ESP_LOGD(TAG, "Temp: %d", curr_state.temp);
-
-  for (size_t pos = 0; pos < 8; pos++) {
-    if (!data.expect_item(FISHER_BIT_MARK, FISHER_ZERO_SPACE)) {
-      return false;
-    }
-  }
-
-  for (size_t pos = 0; pos < 4; pos++) {
-    if (data.expect_item(FISHER_BIT_MARK, FISHER_ONE_SPACE)) {
-      curr_state.bitmap |= 1 << (pos + 3);
-    } else if (!data.expect_item(FISHER_BIT_MARK, FISHER_ZERO_SPACE)) {
-      return false;
-    }
-  }
-
-  ESP_LOGD(TAG, "Turbo: %d", (curr_state.bitmap >> 3) & 0x01);
-  ESP_LOGD(TAG, "Light: %d", (curr_state.bitmap >> 4) & 0x01);
-  ESP_LOGD(TAG, "Tree: %d", (curr_state.bitmap >> 5) & 0x01);
-  ESP_LOGD(TAG, "Blow: %d", (curr_state.bitmap >> 6) & 0x01);
-
-  uint16_t control_data = 0;
-  for (size_t pos = 0; pos < 11; pos++) {
-    if (data.expect_item(FISHER_BIT_MARK, FISHER_ONE_SPACE)) {
-      control_data |= 1 << pos;
-    } else if (!data.expect_item(FISHER_BIT_MARK, FISHER_ZERO_SPACE)) {
-      return false;
-    }
-  }
-
-  if (control_data != 0x250) {
-    return false;
-  }
-
-  return this->parse_state_frame_(curr_state);
+  return this->parse_state_frame_(state_frame);
 }
 
 }  // namespace fisher_ir
