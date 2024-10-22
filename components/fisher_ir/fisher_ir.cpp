@@ -7,7 +7,8 @@ namespace fisher_ir {
 static const char *const TAG = "fisher_ir.climate";
 
 // setters
-uint8_t FisherClimate::set_temp_() {
+uint8_t FisherClimate::set_temp_() 
+{
   return (uint8_t) roundf(clamp<float>(this->target_temperature, FISHER_TEMP_MIN, FISHER_TEMP_MAX) - FISHER_TEMP_MIN);
 }
 
@@ -41,57 +42,18 @@ uint8_t FisherClimate::set_fan_speed_() {
   }
 }
 
-uint8_t FisherClimate::set_blades_() {
-  if (this->swing_mode == climate::CLIMATE_SWING_VERTICAL) {
-    switch (this->blades_) {
-      case FISHER_BLADES_1:
-      case FISHER_BLADES_2:
-      case FISHER_BLADES_HIGH:
-        this->blades_ = FISHER_BLADES_HIGH;
-        break;
-      case FISHER_BLADES_3:
-      case FISHER_BLADES_MID:
-        this->blades_ = FISHER_BLADES_MID;
-        break;
-      case FISHER_BLADES_4:
-      case FISHER_BLADES_5:
-      case FISHER_BLADES_LOW:
-        this->blades_ = FISHER_BLADES_LOW;
-        break;
-      default:
-        this->blades_ = FISHER_BLADES_FULL;
-        break;
-    }
-  } else {
-    switch (this->blades_) {
-      case FISHER_BLADES_1:
-      case FISHER_BLADES_2:
-      case FISHER_BLADES_HIGH:
-        this->blades_ = FISHER_BLADES_1;
-        break;
-      case FISHER_BLADES_3:
-      case FISHER_BLADES_MID:
-        this->blades_ = FISHER_BLADES_3;
-        break;
-      case FISHER_BLADES_4:
-      case FISHER_BLADES_5:
-      case FISHER_BLADES_LOW:
-        this->blades_ = FISHER_BLADES_5;
-        break;
-      default:
-        this->blades_ = FISHER_BLADES_STOP;
-        break;
-    }
-  }
-  return this->blades_;
-}
-
 uint8_t FisherClimate::gen_checksum_() { return (this->set_temp_() + this->set_mode_() + 2) % 16; }
 
 // getters
 float FisherClimate::get_temp_(uint8_t temp) { return (float) (temp + FISHER_TEMP_MIN); }
 
-climate::ClimateMode FisherClimate::get_mode_(uint8_t mode) {
+climate::ClimateMode FisherClimate::get_mode_(uint8_t on_off, uint8_t mode) 
+{
+  if (on_off == 0)
+  {
+    return climate::CLIMATE_MODE_OFF;
+  }
+
   switch (mode) {
     case FISHER_MODE_COOL:
       return climate::CLIMATE_MODE_COOL;
@@ -170,7 +132,7 @@ void FisherClimate::transmit_state() {
   this->add_(1, 1, data);      
   this->add_(0, 32, data);      // zeros
   
-  this->add_((this->mode != climate::CLIMATE_MODE_OFF) ? 0 : 1, data); // ON / OFF
+  this->add_((this->mode != climate::CLIMATE_MODE_OFF) ? 1 : 0, data); // ON / OFF
   
   this->add_(0, 3, data);      // zeros
   
@@ -182,11 +144,9 @@ void FisherClimate::transmit_state() {
 
   this->reverse_add_(this->set_mode_(), 3, data);
 
-  this->add_(0xA5, 8, data);   // idk
-  this->add_(0, 4, data);      // zeros
+  this->add_(0, 8, data);      // zeros
 
-  //this->reverse_add_(this->set_blades_(), 4, data);
-  this->reverse_add_(this->gen_checksum_(), 4, data);
+  this->reverse_add_(this->gen_checksum_(), 8, data);
 
   data->mark(FISHER_ZERO_SPACE);
   data->space(FISHER_HEADER_SPACE);
@@ -195,66 +155,114 @@ void FisherClimate::transmit_state() {
   transmit.perform();
 }
 
-bool FisherClimate::parse_state_frame_(FisherState curr_state) {
-  this->mode = this->get_mode_(curr_state.mode);
+bool FisherClimate::parse_state_frame_(FisherState curr_state) 
+{
+  ESP_LOGI(TAG, "Parse state frame");
+
+  this->mode = this->get_mode_(curr_state.on_off, curr_state.mode);
   this->fan_mode = this->get_fan_speed_(curr_state.fan_speed);
   this->target_temperature = this->get_temp_(curr_state.temp);
   this->swing_mode = this->get_swing_(curr_state.bitmap);
-  if (!(curr_state.bitmap & 0x01)) {
-    this->mode = climate::CLIMATE_MODE_OFF;
-  }
-
+  
   this->publish_state();
   return true;
 }
 
-bool FisherClimate::parse_state_frame_(const uint8_t frame[]) {
+bool FisherClimate::on_receive(remote_base::RemoteReceiveData data)
+{
+  ESP_LOGI(TAG, "receive");
   FisherState curr_state;
-
-
-
-  return this->parse_state_frame_(curr_state);
-}
-
-
-bool FisherClimate::on_receive(remote_base::RemoteReceiveData data) {
-  uint8_t state_frame[FISHER_STATE_FRAME_SIZE] = {};
-  if (!data.expect_item(FISHER_HEADER_MARK, FISHER_HEADER_SPACE)) {
+  if (!data.expect_item(FISHER_HEADER_MARK, FISHER_HEADER_SPACE)) 
+  {
     return false;
   }
-  for (uint8_t pos = 0; pos < FISHER_STATE_FRAME_SIZE; pos++) {
-    uint8_t byte = 0;
-    for (int8_t bit = 0; bit < 8; bit++) {
-      if (data.expect_item(FISHER_BIT_MARK, FISHER_ONE_SPACE)) {
-        byte |= 1 << bit;
-      } else if (!data.expect_item(FISHER_BIT_MARK, FISHER_ZERO_SPACE)) {
-        return false;
-      }
+
+  ESP_LOGI(TAG, "Received Fisher frame");
+
+
+  for (size_t pos = 0; pos < 57; pos++) 
+  {
+    if (!data.expect_item(FISHER_BIT_MARK, FISHER_ONE_SPACE) && 
+        !data.expect_item(FISHER_BIT_MARK, FISHER_ZERO_SPACE)) 
+    {
+      ESP_LOGI(TAG, "Wrong data 57 - %d", pos);
+      return false;
+    } 
+  }
+
+  if (data.expect_item(FISHER_BIT_MARK, FISHER_ONE_SPACE)) 
+  {
+    curr_state.on_off = 1;
+  } 
+  else if (!data.expect_item(FISHER_BIT_MARK, FISHER_ZERO_SPACE)) 
+  {
+    ESP_LOGI(TAG, "Wrong data onoff");
+    return false;
+  }
+
+  ESP_LOGI(TAG, "On/Off: %d", curr_state.on_off);
+
+  for (size_t pos = 0; pos < 3; pos++) 
+  {
+    if (!data.expect_item(FISHER_BIT_MARK, FISHER_ONE_SPACE) && 
+        !data.expect_item(FISHER_BIT_MARK, FISHER_ZERO_SPACE)) 
+    {
+      ESP_LOGI(TAG, "Wrong data 3");
+      return false;
+    } 
+  }
+
+  for (size_t pos = 0; pos < 2; pos++) 
+  {
+    if (data.expect_item(FISHER_BIT_MARK, FISHER_ONE_SPACE)) 
+    {
+      curr_state.fan_speed |= 1 << pos;
     }
-    state_frame[pos] = byte;
-    if (pos == 0) {
-      // frame header
-      if (byte != 0x11)
-        return false;
-    } else if (pos == 1) {
-      // frame header
-      if (byte != 0xDA)
-        return false;
-    } else if (pos == 2) {
-      // frame header
-      if (byte != 0x17)
-        return false;
-    } else if (pos == 3) {
-      // frame header
-      if (byte != 0x18)
-        return false;
-    } else if (pos == 4) {
-      // frame type
-      if (byte != 0x00)
-        return false;
+    else if (!data.expect_item(FISHER_BIT_MARK, FISHER_ZERO_SPACE)) 
+    {
+      ESP_LOGI(TAG, "Wrong data fan");
+      return false;
     }
   }
-  return this->parse_state_frame_(state_frame);
+
+  ESP_LOGI(TAG, "Fan speed: %d", curr_state.fan_speed);
+  
+  for (size_t pos = 0; pos < 9; pos++) 
+  {
+    if (!data.expect_item(FISHER_BIT_MARK, FISHER_ONE_SPACE) && 
+        !data.expect_item(FISHER_BIT_MARK, FISHER_ZERO_SPACE)) 
+    {
+      return false;
+    } 
+  }
+
+  for (size_t pos = 0; pos < 5; pos++) 
+  {
+    if (data.expect_item(FISHER_BIT_MARK, FISHER_ONE_SPACE)) 
+    {
+      curr_state.temp |= 1 << pos;
+    } 
+    else if (!data.expect_item(FISHER_BIT_MARK, FISHER_ZERO_SPACE)) 
+    {
+      return false;
+    }
+  }
+  ESP_LOGI(TAG, "Temp: %d", curr_state.temp + FISHER_TEMP_MIN);
+
+  for (size_t pos = 0; pos < 3; pos++) 
+  {
+    if (data.expect_item(FISHER_BIT_MARK, FISHER_ONE_SPACE)) 
+    {
+      curr_state.mode |= 1 << pos;
+    } 
+    else if (!data.expect_item(FISHER_BIT_MARK, FISHER_ZERO_SPACE)) 
+    {
+      return false;
+    }
+  }
+  ESP_LOGI(TAG, "Mode: %d", curr_state.mode);
+
+  return this->parse_state_frame_(curr_state);
 }
 
 }  // namespace fisher_ir
