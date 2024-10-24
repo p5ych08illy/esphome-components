@@ -27,6 +27,8 @@ enum FisherFanMode : uint8_t {
   FISHER_FAN_3 = 0x01,
 };
 
+const uint32_t FISHER_DATA_BYTE_COUNT = 11;
+
 // IR Transmission
 const uint32_t FISHER_STATE_FRAME_SIZE = 96; //?
 const uint32_t FISHER_IR_FREQUENCY = 38000;
@@ -63,25 +65,24 @@ class FisherClimate : public climate_ir::ClimateIR {
   uint8_t set_mode_();
   uint8_t set_temp_();
   uint8_t set_fan_speed_();
-  uint8_t gen_checksum_();
+  uint8_t gen_checksum_(remote_base::RemoteReceiveData data);
 
   // getters
   climate::ClimateMode get_mode_(uint8_t on_off, uint8_t mode);
   climate::ClimateFanMode get_fan_speed_(uint8_t fan);
-  // get swing
-  climate::ClimateSwingMode get_swing_(uint8_t bitmap);
   float get_temp_(uint8_t temp);
 
-  // check if the received frame is valid
-  bool check_checksum_(uint8_t checksum);
 
   template<typename T> T reverse_(T val, size_t len);
 
-  template<typename T> void add_(T val, size_t len, esphome::remote_base::RemoteTransmitData *ata);
+  template<typename T> void add_(T val, size_t len, esphome::remote_base::RemoteTransmitData *data);
 
   template<typename T> void add_(T val, esphome::remote_base::RemoteTransmitData *data);
 
   template<typename T> void reverse_add_(T val, size_t len, esphome::remote_base::RemoteTransmitData *data);
+
+  void dump_received_(remote_base::RemoteReceiveData data);
+  void get_bytes_(remote_base::RemoteReceiveData data, uint8_t bytes[]);
 
 };
 

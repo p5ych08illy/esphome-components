@@ -42,7 +42,17 @@ uint8_t FisherClimate::set_fan_speed_() {
   }
 }
 
-uint8_t FisherClimate::gen_checksum_() { return (this->set_temp_() + this->set_mode_() + 2) % 16; }
+uint8_t FisherClimate::gen_checksum_(remote_base::RemoteReceiveData data) 
+{
+  uint8_t bytes[FISHER_DATA_BYTE_COUNT] = {};
+  this->get_bytes_(data, bytes);
+  uint16_t sum = 0;
+  for (size_t i = 0; i < FISHER_DATA_BYTE_COUNT; i++) 
+  {
+    sum += bytes[i];
+  }
+  return sum % 256; 
+}
 
 // getters
 float FisherClimate::get_temp_(uint8_t temp) { return (float) (temp + FISHER_TEMP_MIN); }
@@ -84,10 +94,6 @@ climate::ClimateFanMode FisherClimate::get_fan_speed_(uint8_t fan_speed) {
   }
 }
 
-climate::ClimateSwingMode FisherClimate::get_swing_(uint8_t bitmap) {
-  return (bitmap >> 1) & 0x01 ? climate::CLIMATE_SWING_VERTICAL : climate::CLIMATE_SWING_OFF;
-}
-
 template<typename T> T FisherClimate::reverse_(T val, size_t len) {
   T result = 0;
   for (size_t i = 0; i < len; i++) {
@@ -113,14 +119,6 @@ void FisherClimate::reverse_add_(T val, size_t len, esphome::remote_base::Remote
   this->add_(this->reverse_(val, len), len, data);
 }
 
-bool FisherClimate::check_checksum_(uint8_t checksum) {
-  uint8_t expected = this->gen_checksum_();
-  ESP_LOGV(TAG, "Expected checksum: %X", expected);
-  ESP_LOGV(TAG, "Checksum received: %X", checksum);
-
-  return checksum == expected;
-}
-
 void FisherClimate::transmit_state() {
   auto transmit = this->transmitter_->transmit();
   auto *data = transmit.get_data();
@@ -134,23 +132,26 @@ void FisherClimate::transmit_state() {
   
   this->add_((this->mode != climate::CLIMATE_MODE_OFF) ? 1 : 0, data); // ON / OFF
   
-  this->add_(0, 3, data);      // zeros
+  this->add_(3, 3, data);       // swing off
   
   this->reverse_add_(this->set_fan_speed_(), 2, data);
   
-  this->add_(0, 9, data);      // zeros
+  this->add_(0, 9, data);       // zeros
 
   this->reverse_add_(this->set_temp_(), 5, data);
 
   this->reverse_add_(this->set_mode_(), 3, data);
 
-  this->add_(0, 8, data);      // zeros
+  this->add_(0xA5, 8, data);     // idk
 
-  this->reverse_add_(this->gen_checksum_(), 8, data);
+  auto checksumData = data->get_data();
+  auto receiveData = new esphome::remote_base::RemoteReceiveData(checksumData, 50, esphome::remote_base::ToleranceMode::TOLERANCE_MODE_TIME);
 
-  data->mark(FISHER_ZERO_SPACE);
+  this->reverse_add_(this->gen_checksum_(*receiveData), 8, data);
+
+  data->mark(FISHER_BIT_MARK);
   data->space(FISHER_HEADER_SPACE);
-  data->mark(FISHER_ZERO_SPACE);
+  data->mark(FISHER_BIT_MARK);
 
   transmit.perform();
 }
@@ -162,10 +163,55 @@ bool FisherClimate::parse_state_frame_(FisherState curr_state)
   this->mode = this->get_mode_(curr_state.on_off, curr_state.mode);
   this->fan_mode = this->get_fan_speed_(curr_state.fan_speed);
   this->target_temperature = this->get_temp_(curr_state.temp);
-  this->swing_mode = this->get_swing_(curr_state.bitmap);
   
   this->publish_state();
   return true;
+}
+
+void FisherClimate::get_bytes_(remote_base::RemoteReceiveData data, uint8_t bytes[])
+{
+  data.reset();
+  if (data.expect_item(FISHER_HEADER_MARK, FISHER_HEADER_SPACE)) 
+  {
+    int bytes_count = data.size() / 2 / 8;
+    std::unique_ptr<char[]> buf(new char[bytes_count * 3 + 1]);
+    buf[0] = '\0';
+    for (size_t i = 0; i < bytes_count; i++) {
+      uint8_t byte = 0;
+      for (int8_t bit = 0; bit < 8; bit++) {
+        if (data.expect_item(FISHER_BIT_MARK, FISHER_ONE_SPACE)) {
+          byte |= 1 << bit;
+        } else if (!data.expect_item(FISHER_BIT_MARK, FISHER_ZERO_SPACE)) {
+          break;
+        }
+      }
+      bytes[i] = byte;
+    }
+  }
+}
+
+void FisherClimate::dump_received_(remote_base::RemoteReceiveData data)
+{
+  data.reset();
+
+  if (data.expect_item(FISHER_HEADER_MARK, FISHER_HEADER_SPACE)) 
+  {
+    int bytes_count = data.size() / 2 / 8;
+    std::unique_ptr<char[]> buf(new char[bytes_count * 3 + 1]);
+    buf[0] = '\0';
+    for (size_t i = 0; i < bytes_count; i++) {
+      uint8_t byte = 0;
+      for (int8_t bit = 0; bit < 8; bit++) {
+        if (data.expect_item(FISHER_BIT_MARK, FISHER_ONE_SPACE)) {
+          byte |= 1 << bit;
+        } else if (!data.expect_item(FISHER_BIT_MARK, FISHER_ZERO_SPACE)) {
+          break;
+        }
+      }
+      sprintf(buf.get(), "%s%02x ", buf.get(), byte);
+    }
+    ESP_LOGI(TAG, "WHOLE FRAME %s  size: %d", buf.get(), data.size());
+  }
 }
 
 bool FisherClimate::on_receive(remote_base::RemoteReceiveData data)
@@ -261,6 +307,9 @@ bool FisherClimate::on_receive(remote_base::RemoteReceiveData data)
     }
   }
   ESP_LOGI(TAG, "Mode: %d", curr_state.mode);
+
+
+  this->dump_received_(data);
 
   return this->parse_state_frame_(curr_state);
 }
